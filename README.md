@@ -23,6 +23,19 @@ MOSAIC
 └─winform-gui			GUI
 ```
 
+
+## Reference
+- OCR
+  - tesseract: https://github.com/tesseract-ocr/tesseract
+- Database (tiny-db-manager)
+  - SQLiteCpp: https://github.com/SRombauts/SQLiteCpp
+- Virtual Camera (masking-camera)
+  - pyvirtualcam: https://github.com/letmaik/pyvirtualcam
+  - UnityCapture: https://github.com/schellingb/UnityCapture
+- Virtual Display (masking-screen)
+  - Amyuni USB Mobile Monitor: https://www.amyuni.com/forum/viewtopic.php?t=3030
+
+
 ## Developers
 아주대학교 사이버보안학과 소속
 
