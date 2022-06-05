@@ -35,7 +35,21 @@ MOSAIC
 
 
 ## Screenshots
-![main](https://user-images.githubusercontent.com/106902217/172041730-7311384d-97b0-4eed-84ad-76bf6fc183f2.png)
+- GUI
+<img src="https://user-images.githubusercontent.com/106902217/172041730-7311384d-97b0-4eed-84ad-76bf6fc183f2.png" width="70%"/>
+
+- 카메라 필터링
+<img src="https://user-images.githubusercontent.com/106902217/172045178-23129056-bb2d-46c2-a3bc-4312f4eeb9d4.png" width="70%"/>
+
+- 화면 필터링
+<img src="https://user-images.githubusercontent.com/106902217/172045181-114b56c5-1324-4c1b-b5a5-20dfbd8bc4e2.png" width="70%"/>
+
+- 업로드 보안 中 문서 보안
+<img src="https://user-images.githubusercontent.com/106902217/172045162-5128e1c5-155e-4d5b-b30e-f9d25be88e61.png" width="70%"/>
+
+- 업로드 보안 中 메타데이터 보안
+<img src="https://user-images.githubusercontent.com/106902217/172045172-fa9ee611-b9f6-4fe7-9495-9e3f9f2a1d5d.png" width="70%"/>
+
 
 
 ## Developers
