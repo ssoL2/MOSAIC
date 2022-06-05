@@ -307,91 +307,6 @@ void FilterScreenPI_BUFFER(tesseract::TessBaseAPI* api) {
 }
 
 
-bool FilterCameraPI_DEBUG(tesseract::TessBaseAPI* api) {
-    srand(time(0));
-    std::stringstream ss;
-    ss << std::this_thread::get_id();
-    uint64_t id = std::stoull(ss.str());
-    int random_time = rand() % id % 500 + 1;
-    Sleep(random_time);
-    while (true)
-    {
-        semInputQueue.acquire();
-        //printf("do_OCR Thread: %d\n", std::this_thread::get_id());
-        if (!inputQueue.empty()) {
-            int frame_counter = inputQueue.front().first;
-            cv::Mat origin_image_clone = inputQueue.front().second;
-            if (origin_image_clone.empty()) {
-                inputQueue.pop();
-                semInputQueue.release();
-                continue;
-            }
-            inputQueue.pop();
-            semInputQueue.release();
-
-            cv::Mat ocr_image;
-            double aspect_ratio = origin_image_clone.rows / (double)origin_image_clone.cols;
-            int resize_image_height = 1600;
-            double multiple_ratio = origin_image_clone.rows / (double)resize_image_height;
-            cv::resize(origin_image_clone, ocr_image, cv::Size(resize_image_height / aspect_ratio, resize_image_height), 0, 0, cv::INTER_CUBIC);
-            cv::cvtColor(ocr_image, ocr_image, cv::COLOR_BGR2GRAY);
-            cv::adaptiveThreshold(ocr_image, ocr_image, 255, cv::ADAPTIVE_THRESH_GAUSSIAN_C, cv::THRESH_BINARY, 3, 5);
-
-            semOutputQueue.acquire();
-            outputQueue.push(make_pair(frame_counter, ocr_image));
-            semOutputQueue.release();
-        }
-        else {
-            semInputQueue.release();
-        }
-
-        semCapture.release();
-    }
-}
-
-
-/** @brief 가상 디스플레이로 마스킹 처리된 이미지 출력.
-*
-*   @return       void
-*/
-void ExportVirtualScreen() {
-    //지정된 좌표에 존재하는 가상 디스플레이에 전체 화면으로 띄우게끔 창 속성 설정
-    string wName = "Press ESC to stop.";
-    cv::namedWindow(wName, cv::WINDOW_NORMAL);
-    cv::moveWindow(wName, monitorLeft + monitorWidth + 1, monitorTop - 1);
-    cv::setWindowProperty(wName, cv::WND_PROP_FULLSCREEN, cv::WINDOW_FULLSCREEN);
-    while (true)
-    {
-        semOutputQueue.acquire();
-        if (!outputQueue.empty()) {
-            if (outputQueue.top().first == currentFrameCounter) {
-                cv::Mat image = outputQueue.top().second;
-                outputQueue.pop();
-                semOutputQueue.release();
-
-                //가상 디스플레이로 이미지 출력
-                cv::imshow(wName, image);
-                currentFrameCounter++;
-
-                if (cv::waitKey(1) == 27)
-                {
-                    cout << "ESC hit!" << endl;
-                    cv::destroyAllWindows();
-                    break;
-                }
-            }
-            else {
-                semOutputQueue.release();
-            }
-        }
-        else {
-            semOutputQueue.release();
-        }
-    }
-    return;
-}
-
-
 /** @brief 가상 디스플레이로 마스킹 처리된 이미지 출력, 비디오 생성 기능 대응
 *
 *   @return       void
@@ -439,95 +354,6 @@ void ExportVirtualScreen_BUFFER(int fps, int bufferSize) {
         else {
             semOutputQueue.release();
         }
-    }
-    return;
-}
-
-/***
-* 테스트용
-*/
-bool do_show_fake() {
-    string window_name = "Press ESC to stop.";
-    cv::namedWindow(window_name, cv::WINDOW_NORMAL);
-    //cv::moveWindow(window_name, monitor_capture_left + monitor_capture_width + 1, monitor_capture_top - 1);
-    //cv::setWindowProperty(window_name, cv::WND_PROP_FULLSCREEN, cv::WINDOW_FULLSCREEN);
-    while (true)
-    {
-        semOutputQueue.acquire();
-        if (!outputQueue.empty()) {
-            if (outputQueue.top().first == currentFrameCounter) {
-                //printf("cur=%d\tqueue=%d\n", current_frame_counter, output_queue.top().first);
-                cv::Mat image = outputQueue.top().second;
-                outputQueue.pop();
-                semOutputQueue.release();
-                cv::imshow(window_name, image);
-                //printf("cols=%d\trows=%d\n", image.cols, image.rows);
-                currentFrameCounter++;
-                if (cv::waitKey(1) == 27)
-                {
-                    cout << "ESC hit!" << endl;
-                    cv::destroyAllWindows();
-                    break;
-                }
-            }
-            else {
-                semOutputQueue.release();
-            }
-        }
-        else {
-            semOutputQueue.release();
-        }
-    }
-    return false;
-}
-
-/** @brief  주 디스플레이에서 이미지 캡처.
-*
-*   @param[in]  fCounter    현재까지 캡처한 이미지 개수
-*   @param[in]  width       캡처 디스플레이 사양, 너비
-*   @param[in]  height      캡처 디스플레이 사양, 높이
-*   @param[in]  bi          캡처 비트맵 이미지 헤더
-*   @return     void
-*/
-void CaptureScreen(int* fCounter, int width, int height, BITMAPINFOHEADER bi) {
-    while (true)
-    {
-        //사용할 메모리 최대 용량 제한
-        //!TODO: 삭제해도 별 상관 없을듯? 검토 필요
-        if (inputQueue.size() > 512) {
-            continue;
-        }
-
-        //핸들러 생성
-        HDC hScreen = GetDC(NULL);
-        HDC hDC = CreateCompatibleDC(hScreen);
-
-        //캡처 후 메모리에 저장할 비트맵 이미지 생성
-        HBITMAP hBitmap = CreateCompatibleBitmap(hScreen, width, height);
-        HGDIOBJ old_obj = SelectObject(hDC, hBitmap);
-
-        //비트맵 이미지 형태로 디스플레이 캡처
-        BOOL bRet = BitBlt(hDC, 0, 0, width, height, hScreen, 0, 0, SRCCOPY);
-
-        //OpenCV 이미지로 변환
-        cv::Mat mat;
-        mat.create(height, width, CV_8UC3);
-        GetDIBits(hDC, hBitmap, 0, height, mat.data, (BITMAPINFO*)&bi, DIB_RGB_COLORS);
-
-        //리소스 관리 및 회수
-        SelectObject(hDC, old_obj);
-        DeleteDC(hDC);
-        ReleaseDC(NULL, hScreen);
-        DeleteObject(hBitmap);
-
-        semInputQueue.acquire();
-        inputQueue.push(make_pair(*fCounter, mat));
-        (*fCounter)++;
-        semInputQueue.release();
-
-        //메모리 용량 관리 목적
-        //개인정보 처리 스레드가 끝날 때, semCapture를 릴리즈
-        semCapture.acquire();
     }
     return;
 }
@@ -599,7 +425,6 @@ BOOL CALLBACK MonitorEnumProc(HMONITOR hmonitor, HDC hdc, LPRECT lprect, LPARAM 
 
 int main(int argc, char* argv[])
 {
-    // C:\Users\Eungyu\source\repos\miniprj-masking-pi\external\share\tessdata
     if (!argv[1]) {
         std::cout << "데이터셋 파일이 존재하는 경로를 첫번째 인자에 입력해주세요." << endl;
         return 1;
@@ -785,28 +610,6 @@ int main(int argc, char* argv[])
         std::launch::async, [fps, bufferSize]() {
             ExportVirtualScreen_BUFFER(fps, bufferSize);
         });
-
-    /*
-    auto ocr8 = std::async(std::launch::async, [api8, resizeHeight]() { FilterScreenPI(api8, resizeHeight); });
-    auto ocr9 = std::async(std::launch::async, [api9, resizeHeight]() { FilterScreenPI(api9, resizeHeight); });
-    auto ocr10 = std::async(std::launch::async, [api10, resizeHeight]() { FilterScreenPI(api10, resizeHeight); });
-    auto ocr11 = std::async(std::launch::async, [api11, resizeHeight]() { FilterScreenPI(api11, resizeHeight); });
-    auto ocr12 = std::async(std::launch::async, [api12, resizeHeight]() { FilterScreenPI(api12, resizeHeight); });
-    auto ocr13 = std::async(std::launch::async, [api13, resizeHeight]() { FilterScreenPI(api13, resizeHeight); });
-    auto ocr14 = std::async(std::launch::async, [api14, resizeHeight]() { FilterScreenPI(api14, resizeHeight); });
-    auto ocr15 = std::async(std::launch::async, [api15, resizeHeight]() { FilterScreenPI(api15, resizeHeight); });
-    */
-
-    /*
-    auto ocr1 = std::async(std::launch::async, [api1]() { do_OCR_fake(api1); });
-    auto ocr2 = std::async(std::launch::async, [api2]() { do_OCR_fake(api2); });
-    auto ocr3 = std::async(std::launch::async, [api3]() { do_OCR_fake(api3); });
-    auto ocr4 = std::async(std::launch::async, [api4]() { do_OCR_fake(api4); });
-    auto ocr5 = std::async(std::launch::async, [api5]() { do_OCR_fake(api5); });
-    auto ocr6 = std::async(std::launch::async, [api6]() { do_OCR_fake(api6); });
-    auto ocr7 = std::async(std::launch::async, [api7]() { do_OCR_fake(api7); });
-    auto ocr8 = std::async(std::launch::async, [api8]() { do_OCR_fake(api8); });
-    */
 
     _CrtDumpMemoryLeaks();
     return 0;
