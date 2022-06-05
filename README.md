@@ -8,6 +8,21 @@ MOSAIC는 데스크탑 앱을 활용한 민감 개인정보 관리의 약자로,
 ![main](https://user-images.githubusercontent.com/106902217/172041730-7311384d-97b0-4eed-84ad-76bf6fc183f2.png)
 
 
+## Structure
+```bash
+MOSAIC
+├─external
+│  ├─UnityCapture-master: 가상 카메라 설치 파일
+│  └─usbmmidd_v2:  가상 디스플레이 설치 파일
+├─masking-camera: 카메라 필터링 기능
+├─masking-screen: 화면 필터링 기능
+├─resource: 이미지 저장용 디렉터리
+├─tools
+│  └─tiny-db-manager: GUI의 DB 관련 기능
+├─upload-security: 업로드 보안 기능(메타데이터 소거, 문서 보안, 업로드 탐지)
+└─winform-gui: GUI
+```
+
 ## Developers
 아주대학교 사이버보안학과 소속
 
