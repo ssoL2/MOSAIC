@@ -297,246 +297,6 @@ vector<pair<cv::Point, cv::Point>> GetSquareList(cv::Mat image) {
 }
 
 
-/** @brief 캡처된 카메라 이미지로부터 OCR 작업, 개인정보 판별, 마스킹 작업 수행.
-*
-*   @param[in]  api         tesseract OCR 작업 핸들러
-*   @param[in]  opt         마스킹 처리 옵션
-*   @return     void
-*/
-void FilterCameraPI(tesseract::TessBaseAPI* api, int opt) {
-    //레이스 컨디션 방지용 최초 시작 랜덤 지연시간 설정
-    Sleep(rand() % 100 + 1);
-
-    //직사각형 인식, 직사각형 마스킹
-    if (opt == 0) {
-        while (true)
-        {
-            semInputQueue.acquire();
-            if (!inputQueue.empty()) {
-                int frameCounter = inputQueue.front().first;
-                cv::Mat originImage = inputQueue.front().second;
-                if (originImage.empty()) {
-                    inputQueue.pop();
-                    semInputQueue.release();
-                    continue;
-                }
-                inputQueue.pop();
-                semInputQueue.release();
-
-                //직사각형 인식
-                vector<pair<cv::Point, cv::Point>> squareList = GetSquareList(originImage);
-
-                int x, y, w, h;
-                for (int i = 0; i < squareList.size(); i++) {
-                    x = squareList[i].first.x;
-                    y = squareList[i].first.y;
-                    w = squareList[i].second.x - x;
-                    h = squareList[i].second.y - y;
-
-                    //직사각형 마스킹
-                    cv::rectangle(originImage, cv::Rect(cv::Point(x, y), cv::Point(x + w, y + h)), cv::Scalar(0, 0, 0), -1);
-                }
-
-                semOutputQueue.acquire();
-                outputQueue.push(make_pair(frameCounter, originImage));
-                semOutputQueue.release();
-            }
-            else {
-                semInputQueue.release();
-            }
-            semCapture.release();
-        }
-    }
-    //문자열 객체 인식, 문자열 객체 마스킹
-    if (opt == 1) {
-        // 문자 객체 발견 시 해당 객체 마스킹
-        while (true)
-        {
-            semInputQueue.acquire();
-            if (!inputQueue.empty()) {
-                int frameCounter = inputQueue.front().first;
-                cv::Mat originImage = inputQueue.front().second;
-                if (originImage.empty()) {
-                    inputQueue.pop();
-                    semInputQueue.release();
-                    continue;
-                }
-                inputQueue.pop();
-                semInputQueue.release();
-
-                cv::Mat ocrImage;
-                double ratio = originImage.rows / (double)originImage.cols;
-                cv::cvtColor(originImage, ocrImage, cv::COLOR_BGR2GRAY);
-                api->SetImage(ocrImage.data, ocrImage.cols, ocrImage.rows, 1, ocrImage.cols);
-                Boxa* boxes = api->GetComponentImages(tesseract::RIL_SYMBOL, true, NULL, NULL);
-                for (int j = 0; j < boxes->n; j++) {
-                    BOX* box = boxaGetBox(boxes, j, L_CLONE);
-                    int x = box->x;
-                    int y = box->y;
-                    int w = box->w;
-                    int h = box->h;
-
-                    if (w * h < 280000) {
-                        cv::rectangle(originImage, cv::Rect(cv::Point(x, y), cv::Point(x + w, y + h)), cv::Scalar(0, 0, 0), -1);
-                    }
-
-                    boxDestroy(&box);
-                }
-                /*
-                * 직사각형 인식 코드 끝
-                ***/
-                semOutputQueue.acquire();
-                outputQueue.push(make_pair(frameCounter, originImage));
-                semOutputQueue.release();
-            }
-            else {
-                semInputQueue.release();
-            }
-
-            semCapture.release();
-        }
-    }
-    //직사각형 인식, 직사각형 내 개인정보 문자열 마스킹
-    if (opt == 2) {
-        // 직사각형 인식, OCR 수행 후 마스킹
-        while (true)
-        {
-            semInputQueue.acquire();
-            if (!inputQueue.empty()) {
-                int frameCounter = inputQueue.front().first;
-                cv::Mat originImage = inputQueue.front().second;
-                if (originImage.empty()) {
-                    inputQueue.pop();
-                    semInputQueue.release();
-                    continue;
-                }
-                inputQueue.pop();
-                semInputQueue.release();
-
-                cv::Mat ocrImage;
-
-                //직사각형 인식
-                vector<pair<cv::Point, cv::Point>> squareList = GetSquareList(originImage);
-
-                //이미지 전처리: 흑백처리
-                cv::cvtColor(originImage, ocrImage, cv::COLOR_BGR2GRAY);
-
-                //OCR 이미지 지정
-                api->SetImage(ocrImage.data, ocrImage.cols, ocrImage.rows, 1, ocrImage.cols);
-                for (int i = 0; i < squareList.size(); i++) {
-                    int x, y, w, h;
-                    x = squareList[i].first.x;
-                    y = squareList[i].first.y;
-                    w = squareList[i].second.x - x;
-                    h = squareList[i].second.y - y;
-
-                    //OCR 수행할 직사각형 영역 지정
-                    api->SetRectangle(x, y, w, h);
-
-                    //OCR 수행
-                    api->Recognize(0);
-
-                    //단어 단위 인식
-                    tesseract::ResultIterator* ri = api->GetIterator();
-                    tesseract::PageIteratorLevel level = tesseract::RIL_WORD;
-                    if (ri != 0) {
-                        do {
-                            float conf = ri->Confidence(level);
-                            if (conf > 30) {
-                                string word = ri->GetUTF8Text(level);
-
-                                // 개인정보 검출 시, 해당 영역 마스킹
-                                if (CheckPI(word, _reList, _reStrList, _incList, _excList)) {
-                                    int x1, y1, x2, y2;
-                                    ri->BoundingBox(level, &x1, &y1, &x2, &y2);
-                                    cv::rectangle(originImage,
-                                        cv::Rect(cv::Point(x1, y1), cv::Point(x2, y2)),
-                                        cv::Scalar(0, 0, 0), -1);
-                                }
-                            }
-                        } while (ri->Next(level));
-                    }
-                }
-                semOutputQueue.acquire();
-                outputQueue.push(make_pair(frameCounter, originImage));
-                semOutputQueue.release();
-            }
-            else {
-                semInputQueue.release();
-            }
-
-            //메모리 용량 관리 목적
-            //개인정보 처리 작업이 끝난 뒤, 캡처 실행
-            semCapture.release();
-        }
-    }
-    //모든 영역 인식, 모든 영역 내 개인정보 문자열 마스킹
-    if (opt == 3) {
-        while (true)
-        {
-            semInputQueue.acquire();
-            //printf("do_OCR Thread: %d\n", std::this_thread::get_id());
-            if (!inputQueue.empty()) {
-                int frameCounter = inputQueue.front().first;
-                cv::Mat originImage = inputQueue.front().second;
-                if (originImage.empty()) {
-                    inputQueue.pop();
-                    semInputQueue.release();
-                    continue;
-                }
-                inputQueue.pop();
-                semInputQueue.release();
-                cv::Mat ocrImage;
-                double ratio = originImage.rows / (double)originImage.cols;
-
-
-                /***
-                * 전체 인식 코드 시작
-                */
-                cv::Mat gray_image;
-                cv::cvtColor(originImage, gray_image, cv::COLOR_BGR2GRAY);
-
-                ocrImage = gray_image;
-
-                api->SetImage(ocrImage.data, ocrImage.cols, ocrImage.rows, 1, ocrImage.cols);
-                api->Recognize(0);
-
-                tesseract::ResultIterator* ri = api->GetIterator();
-                tesseract::PageIteratorLevel level = tesseract::RIL_WORD;
-                if (ri != 0) {
-                    do {
-                        float conf = ri->Confidence(level);
-                        if (conf > 60) {
-                            //const char* word = ri->GetUTF8Text(level);
-                            string word = ri->GetUTF8Text(level);
-                            int x1, y1, x2, y2;
-                            ri->BoundingBox(level, &x1, &y1, &x2, &y2);
-                            //cv::rectangle(origin_image_clone, cv::Rect(cv::Point(x1 * multiple_ratio, y1 * multiple_ratio), cv::Point(x2 * multiple_ratio, y2 * multiple_ratio)), cv::Scalar(0, 0, 0), -1);
-                            cv::rectangle(originImage, cv::Rect(cv::Point(x1, y1), cv::Point(x2, y2)), cv::Scalar(0, 0, 0), -1);
-                            //printf("word: '%s';  \tconf: %.2f;\n", word, conf);
-                        }
-                    } while (ri->Next(level));
-                }
-                /*
-                * 전체 인식 코드 끝
-                ***/
-
-                semOutputQueue.acquire();
-                outputQueue.push(make_pair(frameCounter, originImage));
-                semOutputQueue.release();
-            }
-            else {
-                semInputQueue.release();
-            }
-
-            semCapture.release();
-        }
-    }
-
-    return;
-}
-
-
 /** @brief 캡처된 카메라 이미지로부터 OCR 작업, 개인정보 판별, 마스킹 작업 수행, 버퍼 기능 대응
 *
 *   @param[in]  api         tesseract OCR 작업 핸들러
@@ -777,68 +537,6 @@ void FilterCameraPI_BUFFER(tesseract::TessBaseAPI* api, int opt) {
 }
 
 
-bool FilterCameraPI_DEBUG(tesseract::TessBaseAPI* api) {
-    while (true)
-    {
-        semInputQueue.acquire();
-        //printf("do_OCR_fake Thread: %d\n", std::this_thread::get_id());
-        if (!inputQueue.empty()) {
-            int frame_counter = inputQueue.front().first;
-            cv::Mat origin_image_clone = inputQueue.front().second;
-            if (origin_image_clone.empty()) {
-                inputQueue.pop();
-                semInputQueue.release();
-                continue;
-            }
-            inputQueue.pop();
-            semInputQueue.release();
-
-            vector<pair<cv::Point, cv::Point>> rectangle_points = GetSquareList(origin_image_clone);
-
-            semOutputQueue.acquire();
-            outputQueue.push(make_pair(frame_counter, origin_image_clone));
-            semOutputQueue.release();
-        }
-        else {
-            semInputQueue.release();
-        }
-        semCapture.release();
-    }
-    return true;
-}
-
-
-/** @brief 가상 카메라로 마스킹 처리된 이미지 출력.
-*
-*   @param[in]    vCam      tesseract OCR 작업 핸들러
-*   @return       void
-*/
-void ExportVirtualCam(VirtualOutput* vCam) {
-    while (true)
-    {
-        semOutputQueue.acquire();
-        if (!outputQueue.empty()) {
-            if (outputQueue.top().first == currentFrameCounter) {
-                cv::Mat image = outputQueue.top().second;
-                outputQueue.pop();
-                semOutputQueue.release();
-
-                //가상 카메라로 이미지 출력
-                vCam->send(image.data);
-                currentFrameCounter++;
-            }
-            else {
-                semOutputQueue.release();
-            }
-        }
-        else {
-            semOutputQueue.release();
-        }
-    }
-    return;
-}
-
-
 /** @brief 가상 카메라로 마스킹 처리된 이미지 출력, 버퍼 기능 대응
 *
 *   @param[in]    vCam      tesseract OCR 작업 핸들러
@@ -880,7 +578,6 @@ void ExportVirtualCam_BUFFER(VirtualOutput* vCam, int fps, int bufferSize) {
     }
     return;
 }
-
 
 
 /** @brief 주어진 카메라에서 이미지 캡처.
@@ -931,57 +628,6 @@ bool CaptureCamera(int* fCounter, int width, int height, int fps, int camNumber)
         (*fCounter)++;
         semInputQueue.release();
 
-        //메모리 용량 관리 목적
-        //개인정보 처리 스레드가 끝날 때, semCapture를 릴리즈
-        semCapture.acquire();
-    }
-    return true;
-}
-
-
-/** @brief 주어진 카메라에서 이미지 캡처, 버퍼 기능 대응
-*
-*   @param[in]    fCounter  현재까지 캡처한 이미지 개수
-*   @param[in]    width     캡처 카메라 사양, 너비
-*   @param[in]    height    캡처 카메라 사양, 높이
-*   @param[in]    fps       캡처 카메라 사양, 초당 캡처 프레임
-*   @param[in]    camNumber 캡처할 카메라 번호
-*   @return       bool      오류 발생 시 false 반환
-*/
-bool CaptureCamera_VIDEO(int* fCounter, int width, int height, int fps, int camNumber) {
-    //카메라 작동 확인
-    cv::VideoCapture capture(camNumber, cv::CAP_DSHOW);
-    if (!capture.isOpened()) {
-        cout << "선택된 카메라를 사용할 수 없습니다." << endl;
-        return false;
-    }
-
-    //카메라 사양 설정
-    capture.set(cv::CAP_PROP_FRAME_WIDTH, width);
-    capture.set(cv::CAP_PROP_FRAME_HEIGHT, height);
-    capture.set(cv::CAP_PROP_FRAME_WIDTH, width);
-    capture.set(cv::CAP_PROP_FPS, fps);
-
-    while (true)
-    {
-        //이미지 캡처
-        cv::Mat image;
-        image.create(height, width, CV_8UC3);
-        if (!capture.grab()) {
-            cout << "Failed to grab frame!" << endl;
-            continue;
-        }
-        if (!capture.retrieve(image)) {
-            cout << "Failed to retrieve frame!" << endl;
-            continue;
-        }
-
-        semInputQueue.acquire();
-        inputQueue.push(make_pair(*fCounter, image));
-        (*fCounter)++;
-        semInputQueue.release();
-
-
         Sleep(1000 / fps);
     }
     return true;
@@ -990,7 +636,6 @@ bool CaptureCamera_VIDEO(int* fCounter, int width, int height, int fps, int camN
 
 int main(int argc, char* argv[])
 {
-    // C:\Users\Eungyu\source\repos\miniprj-masking-pi\external\share\tessdata
     if (!argv[1]) {
         std::cout << "데이터셋 파일이 존재하는 경로를 첫번째 인자에 입력해주세요." << std::endl;
         return 1;
@@ -1179,41 +824,13 @@ int main(int argc, char* argv[])
     int frame_counter = 1;
 
     //캡처 스레드 시작, 비동기
-    /*
     std::future<void> threadCapture = std::async(
         std::launch::async,
         [&frame_counter, width, height, fps, cam]() {
             CaptureCamera(&frame_counter, width, height, fps, cam);
         });
-    */
 
     //개인정보 처리 스레드 시작, 비동기
-    //!TODO: [장착된 CPU의 스레드 개수 - 1]만큼 스레드 실행
-    /*
-    auto ocr1 = std::async(std::launch::async, [api1, mask_opiton]() { FilterCameraPI(api1, mask_opiton); });
-    auto ocr2 = std::async(std::launch::async, [api2, mask_opiton]() { FilterCameraPI(api2, mask_opiton); });
-    auto ocr3 = std::async(std::launch::async, [api3, mask_opiton]() { FilterCameraPI(api3, mask_opiton); });
-    auto ocr4 = std::async(std::launch::async, [api4, mask_opiton]() { FilterCameraPI(api4, mask_opiton); });
-    auto ocr5 = std::async(std::launch::async, [api5, mask_opiton]() { FilterCameraPI(api5, mask_opiton); });
-    auto ocr6 = std::async(std::launch::async, [api6, mask_opiton]() { FilterCameraPI(api6, mask_opiton); });
-    auto ocr7 = std::async(std::launch::async, [api7, mask_opiton]() { FilterCameraPI(api7, mask_opiton); });
-    auto ocr8 = std::async(std::launch::async, [api8, mask_opiton]() { FilterCameraPI(api8, mask_opiton); });
-    */
-
-
-    //가상 카메라 출력 스레드 시작, 비동기
-    /*
-    std::future<void> threadExport = std::async(
-        std::launch::async, [vo]() {
-            ExportVirtualCam(vo);
-        });
-    */
-
-    std::future<void> threadCapture = std::async(
-        std::launch::async,
-        [&frame_counter, width, height, fps, cam]() {
-            CaptureCamera_VIDEO(&frame_counter, width, height, fps, cam);
-        });
     auto ocr1 = std::async(std::launch::async, [api1, mask_opiton]() { FilterCameraPI_BUFFER(api1, mask_opiton); });
     auto ocr2 = std::async(std::launch::async, [api2, mask_opiton]() { FilterCameraPI_BUFFER(api2, mask_opiton); });
     auto ocr3 = std::async(std::launch::async, [api3, mask_opiton]() { FilterCameraPI_BUFFER(api3, mask_opiton); });
@@ -1229,6 +846,8 @@ int main(int argc, char* argv[])
     auto ocr13 = std::async(std::launch::async, [api13, mask_opiton]() { FilterCameraPI_BUFFER(api13, mask_opiton); });
     auto ocr14 = std::async(std::launch::async, [api14, mask_opiton]() { FilterCameraPI_BUFFER(api14, mask_opiton); });
     auto ocr15 = std::async(std::launch::async, [api15, mask_opiton]() { FilterCameraPI_BUFFER(api15, mask_opiton); });
+
+    //가상 카메라 출력 스레드 시작, 비동기
     std::future<void> threadExport = std::async(
         std::launch::async, [vo, fps, bufferSize]() {
             ExportVirtualCam_BUFFER(vo, fps, bufferSize);
