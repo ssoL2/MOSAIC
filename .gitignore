@@ -396,3 +396,8 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+
+# Exception
+!external/**
+!masking-camera/lib/**
+!masking-screen/lib/**
