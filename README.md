@@ -1,8 +1,8 @@
-# MOSAIC
+# [MOSAIC](https://softcon.ajou.ac.kr/works/works.asp?uid=599)
 <img width="776" alt="KakaoTalk_20220605_182616249" src="https://user-images.githubusercontent.com/106902217/172044737-2fb55b4f-9f7d-42fd-bb8d-1d0b4276220a.png">
 
 ## About
-MOSAIC는 데스크탑 앱을 활용한 민감 개인정보 관리의 약자로, 타인과 디지털 데이터를 공유하는 다양한 상황 속에서 의도치 않게 발생하는 사생활 노출을 방지하기 위한 서비스입니다.
+[MOSAIC](https://softcon.ajou.ac.kr/works/works.asp?uid=599)는 데스크탑 앱을 활용한 민감 개인정보 관리의 약자로, 타인과 디지털 데이터를 공유하는 다양한 상황 속에서 의도치 않게 발생하는 사생활 노출을 방지하기 위한 서비스입니다.
 
 카메라 필터링, 화면 필터링, 업로드 보안(문서 보안, 메타데이터 소거)와 같은 기능들을 제공하여 민감한 정보를 실시간 비식별화합니다. 
 
